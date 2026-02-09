@@ -7,3 +7,5 @@ pandas
 plotly
 openpyxl
 shapely
+torch
+
