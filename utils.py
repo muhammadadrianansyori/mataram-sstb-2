@@ -1,95 +1,71 @@
 import ee
 import streamlit as st
 import os
+import json
 
 def initialize_gee():
     """
-    Initializes Google Earth Engine with comprehensive fallback strategies.
+    Inisialisasi Google Earth Engine dengan dukungan Streamlit Secrets (Cloud)
+    dan fallback untuk penggunaan lokal.
     """
-    # Strategy 0: Check for Streamlit Secrets (Cloud Deployment)
-    # Strategy 0: Check for Streamlit Secrets (Cloud Deployment)
+    
+    # STRATEGI 1: Menggunakan Streamlit Secrets (WAJIB untuk Deploy di Cloud)
+    # Pastikan di Settings > Secrets kamu pakai nama [gee_service_account]
+    if "gee_service_account" in st.secrets:
+        try:
+            secret_info = dict(st.secrets["gee_service_account"])
+            
+            # Membersihkan format private_key agar karakter \n terbaca dengan benar
+            if "private_key" in secret_info:
+                secret_info["private_key"] = secret_info["private_key"].replace("\\n", "\n")
+            
+            # Membuat credentials dari data secrets
+            credentials = ee.ServiceAccountCredentials(
+                secret_info['client_email'], 
+                key_data=json.dumps(secret_info)
+            )
+            
+            # Inisialisasi dengan Project ID yang sesuai dari Secrets
+            project_id = secret_info.get("project_id", "ee-streamlit-mataram")
+            ee.Initialize(credentials=credentials, project=project_id)
+            
+            st.success(f"✅ Terhubung ke GEE via Secrets (Project: {project_id})")
+            return True
+            
+        except Exception as e:
+            st.error(f"❌ Gagal Auth via Secrets: {e}")
+            # Jika gagal via secrets, lanjut ke strategi berikutnya
+    
+    # STRATEGI 2: Inisialisasi Standar (Untuk Lokal/Komputer Sendiri)
     try:
-        # Accessing st.secrets triggers an error if no secrets.toml exists locally
-        if "gee_service_account" in st.secrets:
-            try:
-                service_account = st.secrets["gee_service_account"]
-                # Convert string to dict if needed (secrets usually return parsed toml/json)
-                # If standard service account JSON structure
-                credentials = ee.ServiceAccountCredentials(
-                    service_account['client_email'], 
-                    key_data=str(service_account).replace("'", '"') # minimal handle
-                )
-                
-                # Correct way to use service account in Streamlit Cloud
-                project_id = service_account["project_id"]
-                ee.Initialize(credentials=credentials, project=project_id)
-                st.success(f"✅ Connected via Streamlit Secrets (Project: {project_id})")
-                return True
-            except Exception as e:
-                st.warning(f"⚠️ Secrets found but auth failed: {e}")
-    except:
-        # Pass silently if secrets are not found locally
-        pass
-
-    # Strategy 1: Try standard initialization
-    try:
-        ee.Initialize(project="mataram-sstb")
-        st.success("✅ Connected to Google Earth Engine!")
+        # Coba inisialisasi default
+        ee.Initialize()
+        st.success("✅ Terhubung ke GEE (Metode Default)")
         return True
-    except Exception as e1:
-        error_msg = str(e1)
-        
-        # Strategy 2: Check if it's a "no project" error
-        if "project" in error_msg.lower():
-            st.warning("⚠️ GEE authenticated but no default project found.")
-            
-            # Try to find credentials file and extract project
-            cred_path = os.path.expanduser("~/.config/earthengine/credentials")
-            if os.path.exists(cred_path):
-                try:
-                    import json
-                    with open(cred_path, 'r') as f:
-                        creds = json.load(f)
-                        if 'project_id' in creds or 'project' in creds:
-                            project = creds.get('project_id') or creds.get('project')
-                            ee.Initialize(project=project)
-                            st.success(f"✅ Connected using project: {project}")
-                            return True
-                except:
-                    pass
-            
-            # Strategy 3: Try with common project patterns
-            st.info("🔄 Attempting alternative initialization...")
-            try:
-                # This forces a re-check of credentials
-                ee.Initialize(opt_url='https://earthengine.googleapis.com')
-                st.success("✅ Connected via alternative method!")
-                return True
-            except Exception as e3:
-                pass
+    except Exception as e:
+        # STRATEGI 3: Inisialisasi dengan Nama Project Manual
+        try:
+            project_manual = "ee-streamlit-mataram"
+            ee.Initialize(project=project_manual)
+            st.success(f"✅ Terhubung ke GEE (Project: {project_manual})")
+            return True
+        except Exception as e2:
+            st.warning(f"⚠️ GEE gagal inisialisasi: {e2}")
 
+    # STRATEGI 4: Troubleshooting & Demo Mode
+    st.error("❌ GEE Initialization Failed.")
+    
+    with st.expander("🔧 Cara Memperbaiki Error GEE"):
+        st.markdown(f"""
+        1.  **Cek Streamlit Secrets:** Pastikan judul di Secrets adalah `[gee_service_account]` (pakai kurung siku).
+        2.  **Whitelist Service Account:** Pastikan email ini sudah terdaftar di Google Earth Engine:  
+            `streamlit-access@ee-streamlit-mataram.iam.gserviceaccount.com`
+        3.  **Project ID:** Pastikan project ID di Secrets adalah `ee-streamlit-mataram`.
+        """)
         
-        # Strategy 4: Show helpful error and demo mode option
-        st.error(f"❌ GEE Initialization Failed: {error_msg}")
+    # Sediakan tombol demo jika GEE gagal total
+    if st.button("🎮 Jalankan Mode Demo (Tanpa GEE Real-time)", key="utils_demo_btn"):
+        st.session_state['use_dummy_data'] = True
+        st.rerun()
         
-        with st.expander("🔧 Troubleshooting Steps"):
-            st.markdown("""
-            **Masalah:** Google Earth Engine tidak dapat menemukan Cloud Project Anda.
-            
-            **Solusi Manual:**
-            1. Buka [Google Cloud Console](https://console.cloud.google.com)
-            2. Buat project baru (misal: `mataram-sstb`)
-            3. Catat nama project tersebut
-            4. Edit file `utils.py` baris 12, ganti menjadi:
-               ```python
-               ee.Initialize(project='mataram-sstb')  # Ganti dengan nama project Anda
-               ```
-            5. Restart aplikasi
-            """)
-        
-        # Offer demo mode
-        if st.button("🎮 Launch Demo Mode (Offline Simulation)", key="demo_btn"):
-            st.session_state['demo_mode'] = True
-            st.rerun()
-        
-        return False
+    return False
