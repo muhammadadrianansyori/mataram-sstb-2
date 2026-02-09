@@ -1,71 +1,54 @@
 import ee
 import streamlit as st
-import os
 import json
 
 def initialize_gee():
     """
-    Inisialisasi Google Earth Engine dengan dukungan Streamlit Secrets (Cloud)
-    dan fallback untuk penggunaan lokal.
+    Inisialisasi Google Earth Engine menggunakan Streamlit Secrets.
+    Menangani konversi format kunci rahasia secara otomatis.
     """
-    
-    # STRATEGI 1: Menggunakan Streamlit Secrets (WAJIB untuk Deploy di Cloud)
-    # Pastikan di Settings > Secrets kamu pakai nama [gee_service_account]
+    # 1. Periksa apakah secrets dengan nama 'gee_service_account' ada
     if "gee_service_account" in st.secrets:
         try:
-            secret_info = dict(st.secrets["gee_service_account"])
+            # Mengambil data dari secrets sebagai dictionary
+            creds_dict = dict(st.secrets["gee_service_account"])
             
-            # Membersihkan format private_key agar karakter \n terbaca dengan benar
-            if "private_key" in secret_info:
-                secret_info["private_key"] = secret_info["private_key"].replace("\\n", "\n")
+            # Membersihkan private_key:
+            # Menangani jika ada karakter newline literal (\n) yang terbaca sebagai string
+            if "private_key" in creds_dict:
+                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             
-            # Membuat credentials dari data secrets
+            # Membuat objek kredensial Service Account
+            # json.dumps digunakan untuk memastikan data dikonversi ke format string JSON yang valid
             credentials = ee.ServiceAccountCredentials(
-                secret_info['client_email'], 
-                key_data=json.dumps(secret_info)
+                creds_dict['client_email'],
+                key_data=json.dumps(creds_dict)
             )
             
-            # Inisialisasi dengan Project ID yang sesuai dari Secrets
-            project_id = secret_info.get("project_id", "ee-streamlit-mataram")
+            # Inisialisasi GEE dengan kredensial dan Project ID
+            project_id = creds_dict.get('project_id', 'ee-streamlit-mataram')
             ee.Initialize(credentials=credentials, project=project_id)
             
-            st.success(f"✅ Terhubung ke GEE via Secrets (Project: {project_id})")
+            st.success(f"✅ Terhubung ke Google Earth Engine (Project: {project_id})")
             return True
-            
-        except Exception as e:
-            st.error(f"❌ Gagal Auth via Secrets: {e}")
-            # Jika gagal via secrets, lanjut ke strategi berikutnya
-    
-    # STRATEGI 2: Inisialisasi Standar (Untuk Lokal/Komputer Sendiri)
-    try:
-        # Coba inisialisasi default
-        ee.Initialize()
-        st.success("✅ Terhubung ke GEE (Metode Default)")
-        return True
-    except Exception as e:
-        # STRATEGI 3: Inisialisasi dengan Nama Project Manual
-        try:
-            project_manual = "ee-streamlit-mataram"
-            ee.Initialize(project=project_manual)
-            st.success(f"✅ Terhubung ke GEE (Project: {project_manual})")
-            return True
-        except Exception as e2:
-            st.warning(f"⚠️ GEE gagal inisialisasi: {e2}")
 
-    # STRATEGI 4: Troubleshooting & Demo Mode
-    st.error("❌ GEE Initialization Failed.")
-    
-    with st.expander("🔧 Cara Memperbaiki Error GEE"):
-        st.markdown(f"""
-        1.  **Cek Streamlit Secrets:** Pastikan judul di Secrets adalah `[gee_service_account]` (pakai kurung siku).
-        2.  **Whitelist Service Account:** Pastikan email ini sudah terdaftar di Google Earth Engine:  
-            `streamlit-access@ee-streamlit-mataram.iam.gserviceaccount.com`
-        3.  **Project ID:** Pastikan project ID di Secrets adalah `ee-streamlit-mataram`.
-        """)
+        except Exception as e:
+            # Menampilkan pesan error jika autentikasi gagal
+            st.error(f"❌ Gagal Autentikasi GEE: {e}")
+            
+            # Memberikan petunjuk perbaikan jika error spesifik muncul
+            if "converted to bytes" in str(e).lower():
+                st.info("💡 Tip: Pastikan format 'private_key' di Secrets sudah benar (gunakan tanda kutip tiga [\"\"\"] jika perlu).")
+            
+            return False
+    else:
+        # Tampilan jika Secrets belum diatur di Streamlit Cloud
+        st.warning("⚠️ Secrets 'gee_service_account' tidak ditemukan.")
+        st.info("Pastikan Anda sudah menambahkan Service Account Key di menu Settings > Secrets pada Streamlit Cloud.")
         
-    # Sediakan tombol demo jika GEE gagal total
-    if st.button("🎮 Jalankan Mode Demo (Tanpa GEE Real-time)", key="utils_demo_btn"):
-        st.session_state['use_dummy_data'] = True
-        st.rerun()
-        
-    return False
+        # Opsi Mode Demo agar aplikasi tetap bisa terbuka
+        if st.button("🎮 Jalankan Mode Demo (Data Simulasi)", key="demo_mode_btn"):
+            st.session_state['demo_mode'] = True
+            st.rerun()
+            
+        return False
