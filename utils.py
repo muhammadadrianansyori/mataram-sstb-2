@@ -5,16 +5,15 @@ import json
 def initialize_gee():
     if "gee_service_account" in st.secrets:
         try:
+            # Mengambil data dari secrets
             creds_dict = dict(st.secrets["gee_service_account"])
             
-            # Membersihkan karakter escape yang sering merusak kunci
+            # Membersihkan karakter \n jika tersimpan sebagai teks
             if "private_key" in creds_dict:
                 creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             
-            # Inisialisasi Kredensial secara manual agar lebih stabil
-            from google.oauth2 import service_account
-            
-            # GEE butuh JSON string untuk key_data
+            # Inisialisasi menggunakan Service Account Credentials
+            # Kita menggunakan json.dumps untuk memastikan data dikonversi ke bytes dengan benar
             credentials = ee.ServiceAccountCredentials(
                 creds_dict['client_email'],
                 key_data=json.dumps(creds_dict)
