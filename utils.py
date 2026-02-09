@@ -5,27 +5,36 @@ import json
 def initialize_gee():
     if "gee_service_account" in st.secrets:
         try:
-            # Mengambil data dari secrets
-            creds_dict = dict(st.secrets["gee_service_account"])
+            # Ambil data dari secrets
+            s = st.secrets["gee_service_account"]
             
-            # Membersihkan karakter \n jika tersimpan sebagai teks
-            if "private_key" in creds_dict:
-                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            # Buat dictionary baru agar kita bisa memodifikasi isinya
+            creds_dict = {
+                "type": s["type"],
+                "project_id": s["project_id"],
+                "private_key_id": s["private_key_id"],
+                "private_key": s["private_key"].replace("\\n", "\n"), # Paksa perbaikan baris baru
+                "client_email": s["client_email"],
+                "client_id": s["client_id"],
+                "auth_uri": s["auth_uri"],
+                "token_uri": s["token_uri"],
+                "auth_provider_x509_cert_url": s["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": s["client_x509_cert_url"]
+            }
             
-            # Inisialisasi menggunakan Service Account Credentials
-            # Kita menggunakan json.dumps untuk memastikan data dikonversi ke bytes dengan benar
+            # Gunakan ServiceAccountCredentials secara langsung
             credentials = ee.ServiceAccountCredentials(
                 creds_dict['client_email'],
                 key_data=json.dumps(creds_dict)
             )
             
             ee.Initialize(credentials=credentials, project=creds_dict['project_id'])
-            st.success(f"✅ Berhasil! Terhubung ke GEE (Project: {creds_dict['project_id']})")
+            st.success(f"✅ GEE Connected: {creds_dict['project_id']}")
             return True
 
         except Exception as e:
-            st.error(f"❌ Autentikasi GEE Gagal: {e}")
+            st.error(f"❌ Autentikasi Gagal: {e}")
             return False
     
-    st.warning("⚠️ Konfigurasi GEE (Secrets) belum ditemukan.")
+    st.warning("⚠️ Secrets tidak ditemukan.")
     return False
